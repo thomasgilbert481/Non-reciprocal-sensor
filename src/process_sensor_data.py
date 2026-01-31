@@ -245,6 +245,83 @@ def plot_summary(all_results, output_path):
     print(f"\nSaved summary plot: {output_path}")
 
 
+def plot_fitting_diagnostics(freq, co_data, sensor_name, output_dir, single_peak=False, n_plots=20):
+    """Generate diagnostic plots showing raw spectra with detected peaks."""
+
+    # Get valid Co values
+    valid_cos = sorted([co for co in co_data.keys() if co_data[co].max() > 1e-10])
+
+    if len(valid_cos) == 0:
+        print(f"  No valid data for fitting plots")
+        return
+
+    # Sample ~n_plots evenly across the Co range
+    if len(valid_cos) <= n_plots:
+        sample_cos = valid_cos
+    else:
+        indices = np.linspace(0, len(valid_cos) - 1, n_plots, dtype=int)
+        sample_cos = [valid_cos[i] for i in indices]
+
+    print(f"  Generating {len(sample_cos)} fitting diagnostic plots...")
+
+    for co_val in sample_cos:
+        transmission = co_data[co_val]
+
+        # Find peaks
+        if single_peak:
+            peak_idx = find_single_peak(freq, transmission)
+            peak_indices = [peak_idx] if peak_idx is not None else []
+        else:
+            peak_indices = find_two_peaks(freq, transmission)
+            if peak_indices is None:
+                peak_indices = []
+
+        # Create the plot
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        # Plot raw spectrum
+        ax.plot(freq, transmission, 'b-', linewidth=1, label='Raw Data')
+
+        # Mark detected peaks
+        if len(peak_indices) > 0:
+            peak_freqs = freq[peak_indices]
+            peak_trans = transmission[peak_indices]
+            ax.plot(peak_freqs, peak_trans, 'ro', markersize=12,
+                    label=f'Detected Peaks ({len(peak_indices)})', zorder=5)
+
+            # Add vertical lines at peak positions
+            for pf in peak_freqs:
+                ax.axvline(x=pf, color='r', linestyle='--', alpha=0.5)
+
+            # Annotate peak frequencies
+            for pf, pt in zip(peak_freqs, peak_trans):
+                ax.annotate(f'{pf:.3f} GHz',
+                           xy=(pf, pt), xytext=(5, 10),
+                           textcoords='offset points', fontsize=9,
+                           color='red', fontweight='bold')
+
+        ax.set_xlabel('Frequency (GHz)', fontsize=12)
+        ax.set_ylabel('Transmission |S21|', fontsize=12)
+        ax.set_title(f'{sensor_name} - Co = {co_val:.2f} pF', fontsize=14)
+        ax.legend(loc='best')
+        ax.grid(True, alpha=0.3)
+
+        # Focus on the relevant frequency range (where peaks are)
+        if len(peak_indices) > 0:
+            peak_center = np.mean(peak_freqs)
+            ax.set_xlim(max(0, peak_center - 3), min(20, peak_center + 3))
+
+        plt.tight_layout()
+
+        # Save plot
+        filename = f"Co_{co_val:.2f}pF.png".replace('.', 'p', 1)
+        filepath = output_dir / filename
+        plt.savefig(filepath, dpi=150, bbox_inches='tight')
+        plt.close()
+
+    print(f"  Saved fitting plots to: {output_dir}")
+
+
 def main():
     # Define input files and output names
     # Note: non-reciprocal sensor only has 1 peak, requires special handling
@@ -272,6 +349,10 @@ def main():
     # Create output directory
     output_dir = Path('output')
     output_dir.mkdir(exist_ok=True)
+
+    # Create fitting directory
+    fitting_dir = Path('fitting')
+    fitting_dir.mkdir(exist_ok=True)
 
     print("=" * 60)
     print("Sensor Data Processing")
@@ -303,6 +384,12 @@ def main():
             # Generate individual plot
             plot_path = output_dir / f"{sensor['output_prefix']}_deltaF_vs_Co.png"
             plot_deltaF_vs_Co(results_df, sensor['name'], plot_path)
+
+            # Generate fitting diagnostic plots
+            sensor_fitting_dir = fitting_dir / sensor['output_prefix']
+            sensor_fitting_dir.mkdir(exist_ok=True)
+            plot_fitting_diagnostics(freq, co_data, sensor['name'],
+                                    sensor_fitting_dir, sensor['single_peak'])
 
         except Exception as e:
             print(f"  Error: {e}")
