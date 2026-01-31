@@ -15,10 +15,7 @@ env/
 # !data/*.xlsx  # Excel files in data/ are tracked
 !data/README.md
 
-# Output files (generated, don't commit)
-output/*.png
-output/*.csv
-output/*.pdf
+# Output files - tracked for review
 !output/.gitkeep
 
 # IDE
