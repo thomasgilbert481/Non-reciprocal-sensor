@@ -34,23 +34,17 @@ def load_sensor_data(filepath):
 def find_two_peaks(freq, transmission):
     """Find the two main peaks in transmission spectrum."""
 
-    # For reciprocal sensors with clear peaks
-    peaks, props = find_peaks(transmission,
-                               prominence=0.1,
-                               distance=20)
+    # Try progressively lower prominence thresholds to catch smaller peaks
+    for prominence in [0.1, 0.05, 0.01, 0.005, 0.001]:
+        peaks, props = find_peaks(transmission,
+                                   prominence=prominence,
+                                   distance=20)
 
-    if len(peaks) >= 2:
-        # Sort by peak height and take top 2
-        heights = transmission[peaks]
-        top2_idx = peaks[heights.argsort()[-2:]]
-        return sorted(top2_idx)
-
-    # Fallback: try lower prominence for merged peaks
-    peaks, _ = find_peaks(transmission, prominence=0.01, distance=30)
-    if len(peaks) >= 2:
-        heights = transmission[peaks]
-        top2_idx = peaks[heights.argsort()[-2:]]
-        return sorted(top2_idx)
+        if len(peaks) >= 2:
+            # Sort by peak height and take top 2
+            heights = transmission[peaks]
+            top2_idx = peaks[heights.argsort()[-2:]]
+            return sorted(top2_idx)
 
     # If only 1 peak found, return None
     return None
@@ -336,7 +330,7 @@ def main():
             'file': 'data/non reciprocal sensor (0-1) co sweep.xlsx',
             'name': 'Non-Reciprocal Sensor',
             'output_prefix': 'non_reciprocal',
-            'single_peak': True  # This sensor only has 1 peak
+            'single_peak': False  # Has 2 peaks (smaller one around 2.5 GHz)
         },
         {
             'file': 'data/reciprocal sensor without IC (0-1pf_.xlsx',
