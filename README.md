@@ -1,49 +1,58 @@
 # Non-Reciprocal Sensor Data Analysis
 
-This project processes transmission spectrum data from non-reciprocal sensors to analyze frequency shifts as a function of capacitance (Co).
+This project processes transmission spectrum data (S21 parameter) from RF sensors to analyze frequency shifts as a function of capacitance (Co).
 
 ## Overview
 
-The sensor generates transmission spectra (frequency vs. transmission) at various capacitor values (Co: 0-1 pF). Each spectrum contains two characteristic peaks. By tracking how the difference between these peaks changes with capacitance, we can characterize the sensor's response.
+The sensors generate transmission spectra (frequency vs. |S21|) at various capacitor values (Co: 0-1 pF). Each spectrum contains characteristic peaks. By tracking how the difference between peaks changes with capacitance, we can characterize the sensor's response.
 
-## Data Structure
+## Data Files
 
-```
-data/
-├── sensor1.xlsx    # First sensor dataset
-├── sensor2.xlsx    # Second sensor dataset
-└── sensor3.xlsx    # Third sensor dataset
-```
+Three sensor datasets in `data/`:
 
-Each Excel file should contain:
-- Multiple sheets or columns for different Co values (0 to 1 pF)
-- Frequency data (typically in GHz or MHz)
-- Transmission data (typically in dB)
+| File | Sensor Type |
+|------|-------------|
+| `Reciprocal Sensor with IC Co sweep (o-1pf).xlsx` | Reciprocal sensor with integrated circuit |
+| `non reciprocal sensor (0-1) co sweep.xlsx` | Non-reciprocal sensor |
+| `reciprocal sensor without IC (0-1pf_.xlsx` | Reciprocal sensor without integrated circuit |
+
+### Data Format
+
+- **Frequency range**: 0.10 - 20.00 GHz (1991 points)
+- **Capacitance range**: 0 - 1 pF (101 values, 0.01 pF steps)
+- **Transmission**: Linear magnitude of S21 parameter
 
 ## Output
 
 The analysis produces:
-1. **DeltaF vs Co plots** for each sensor
-2. **Processed data** in CSV format
-3. **Summary statistics** for peak identification
+1. **DeltaF vs Co plots** - 3 PNG files showing frequency shift vs capacitance
+2. **CSV data** - Processed peak frequencies and DeltaF values
 
 ## Quick Start
 
-1. Place your Excel files in the `data/` directory
-2. Install dependencies: `pip install -r requirements.txt`
-3. Run the analysis: `python src/process_sensor_data.py`
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the analysis
+python src/process_sensor_data.py
+```
+
+## Algorithm
+
+1. For each Co value, identify two transmission peaks
+2. Calculate frequency difference between peaks (deltaF)
+3. At Co=0 (baseline): record deltaF_baseline
+4. For each Co: DeltaF = deltaF_baseline - deltaF_current
+5. Plot Co vs DeltaF for each sensor
 
 ## Dependencies
 
 - Python 3.8+
-- pandas
-- numpy
-- scipy
-- matplotlib
-- openpyxl
+- pandas, numpy, scipy, matplotlib, openpyxl
 
-See `requirements.txt` for exact versions.
+See `requirements.txt` for details.
 
 ## Task Instructions
 
-See [TASK.md](TASK.md) for detailed instructions on the data processing algorithm and expected output format.
+See [TASK.md](TASK.md) for detailed processing algorithm and implementation guidance.

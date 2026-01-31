@@ -11,9 +11,8 @@ env/
 # Jupyter Notebooks
 .ipynb_checkpoints/
 
-# Data files (keep structure, ignore large data)
-*.xlsx
-*.xls
+# Data files - xlsx files are tracked in data/ folder
+# !data/*.xlsx  # Excel files in data/ are tracked
 !data/README.md
 
 # Output files (generated, don't commit)

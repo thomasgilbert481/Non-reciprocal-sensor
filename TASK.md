@@ -2,99 +2,190 @@
 
 ## Objective
 
-Process 3 Excel files containing non-reciprocal sensor transmission data to generate plots showing the change in frequency difference (DeltaF) as a function of capacitance (Co).
+Process 3 Excel files containing sensor transmission data (S21 parameter) to generate plots showing the change in frequency difference (DeltaF) as a function of capacitance (Co).
 
-## Input Data Format
+## Input Data Files
 
-Each Excel file contains transmission spectrum data:
-- **X-axis**: Frequency (check units - likely GHz or MHz)
-- **Y-axis**: Transmission (likely in dB, look for negative values indicating loss)
-- **Parameter**: Capacitance Co sweeping from 0 to 1 pF
+The following 3 Excel files are in the `data/` directory:
 
-### Expected Excel Structure
+| File | Description | Notes |
+|------|-------------|-------|
+| `Reciprocal Sensor with IC Co sweep (o-1pf).xlsx` | Reciprocal sensor with IC | 2 clear peaks at ~4.42 GHz and ~4.80 GHz |
+| `non reciprocal sensor (0-1) co sweep.xlsx` | Non-reciprocal sensor | May have closely spaced/merged peaks |
+| `reciprocal sensor without IC (0-1pf_.xlsx` | Reciprocal sensor without IC | **C0=0 has no data** - use C0=0.01 pF as baseline |
 
-The data may be organized as:
-- **Option A**: Separate sheets for each Co value
-- **Option B**: Multiple column pairs (Frequency, Transmission) for each Co value
-- **Option C**: A single sheet with Co as an additional column
+## Data Format (Confirmed)
 
-Inspect the Excel files first to determine the actual structure.
+Each Excel file has:
+- **Single sheet**: `Sheet1`
+- **1991 rows**: Frequency points from 0.10 to 20.00 GHz
+- **102 columns**: 1 frequency column + 101 transmission columns (Co = 0 to 1 pF in 0.01 pF steps)
+
+### Column Structure
+
+```
+Column 1: "Frequency (GHz)"
+Column 2: "|S(2,1)| : [Sensor Name] (C0 = 0 )"
+Column 3: "|S(2,1)| : [Sensor Name] (C0 = 0.01 )"
+...
+Column 102: "|S(2,1)| : [Sensor Name] (C0 = 1 )"
+```
+
+### Data Values
+
+- **Frequency**: 0.10 to 20.00 GHz (linear spacing)
+- **Transmission**: Linear magnitude (NOT dB) - values range from ~1e-12 to ~1.0
+- **Peaks**: Local maxima in transmission (values approaching 1.0)
 
 ## Processing Algorithm
 
-### Step 1: Load and Inspect Data
+### Step 1: Load Data
 
 ```python
-# Read each Excel file
-# Identify the structure (sheets vs columns)
-# Extract frequency and transmission data for each Co value
+import pandas as pd
+import re
+
+def load_sensor_data(filepath):
+    df = pd.read_excel(filepath, sheet_name='Sheet1')
+    freq = df['Frequency (GHz)'].values
+
+    # Extract Co values and transmission data
+    co_data = {}
+    for col in df.columns:
+        if 'C0 =' in col:
+            # Extract Co value using regex
+            match = re.search(r'C0 = ([\d.]+)', col)
+            if match:
+                co_val = float(match.group(1))
+                co_data[co_val] = df[col].values
+
+    return freq, co_data
 ```
 
-### Step 2: Peak Detection for Each Spectrum
+### Step 2: Peak Detection
 
-For each Co value's transmission spectrum:
-
-1. **Find TWO peaks** in the transmission data
-   - Use `scipy.signal.find_peaks()` with appropriate parameters
-   - Peaks in transmission spectra are typically local maxima (less negative dB values)
-   - May need to adjust `height`, `distance`, `prominence` parameters
-
-2. **Handle challenging cases**:
-   - Closely spaced peaks: reduce `distance` parameter
-   - Odd shapes: adjust `prominence` to distinguish real peaks from noise
-   - If automatic detection fails, consider smoothing the data first
+Use `scipy.signal.find_peaks()` with parameters tuned for this data:
 
 ```python
 from scipy.signal import find_peaks
 
-# Example peak detection
-peaks, properties = find_peaks(transmission,
-                                prominence=0.5,  # Adjust as needed
-                                distance=10)     # Minimum samples between peaks
+def find_two_peaks(freq, transmission):
+    """Find the two main peaks in transmission spectrum."""
+
+    # For reciprocal sensors with clear peaks
+    peaks, props = find_peaks(transmission,
+                               prominence=0.1,   # Works for clear peaks
+                               distance=20)      # ~0.2 GHz separation
+
+    if len(peaks) >= 2:
+        # Sort by peak height and take top 2
+        heights = transmission[peaks]
+        top2_idx = peaks[heights.argsort()[-2:]]
+        return sorted(top2_idx)
+
+    # Fallback: try lower prominence for merged peaks
+    peaks, _ = find_peaks(transmission, prominence=0.01, distance=30)
+    if len(peaks) >= 2:
+        heights = transmission[peaks]
+        top2_idx = peaks[heights.argsort()[-2:]]
+        return sorted(top2_idx)
+
+    # If only 1 peak found, return None or handle specially
+    return None
 ```
 
 ### Step 3: Calculate Baseline DeltaF
 
-At **Co = 0 pF** (the baseline):
-1. Identify the two peak frequencies: `f1_baseline`, `f2_baseline`
-2. Calculate baseline frequency difference:
-   ```
-   deltaF_baseline = |f2_baseline - f1_baseline|
-   ```
+```python
+def get_baseline(freq, co_data, baseline_co=0.0):
+    """Calculate baseline frequency difference at Co=0 (or first available)."""
 
-### Step 4: Calculate DeltaF for Each Co Value
+    # Handle special case: reciprocal without IC has no data at C0=0
+    if baseline_co not in co_data or co_data[baseline_co].max() < 1e-10:
+        baseline_co = min(co for co in co_data.keys() if co_data[co].max() > 1e-10)
+        print(f"Warning: Using Co={baseline_co} pF as baseline (C0=0 has no data)")
 
-For each Co value from 0 to 1 pF:
-1. Find the two peaks: `f1`, `f2`
-2. Calculate current frequency difference:
-   ```
-   deltaF_current = |f2 - f1|
-   ```
-3. Calculate the change from baseline:
-   ```
-   DeltaF = deltaF_baseline - deltaF_current
-   ```
+    transmission = co_data[baseline_co]
+    peak_indices = find_two_peaks(freq, transmission)
 
-**Important**: The formula is `baseline - current`, not `current - baseline`.
+    if peak_indices is None:
+        raise ValueError("Could not find 2 peaks for baseline")
+
+    f1 = freq[peak_indices[0]]
+    f2 = freq[peak_indices[1]]
+    deltaF_baseline = abs(f2 - f1)
+
+    return deltaF_baseline, baseline_co
+```
+
+### Step 4: Process All Co Values
+
+```python
+def process_sensor(freq, co_data):
+    """Process all Co values and calculate DeltaF."""
+
+    deltaF_baseline, baseline_co = get_baseline(freq, co_data)
+
+    results = []
+    for co_val in sorted(co_data.keys()):
+        transmission = co_data[co_val]
+
+        # Skip if no data
+        if transmission.max() < 1e-10:
+            continue
+
+        peak_indices = find_two_peaks(freq, transmission)
+
+        if peak_indices is not None:
+            f1 = freq[peak_indices[0]]
+            f2 = freq[peak_indices[1]]
+            deltaF_current = abs(f2 - f1)
+            DeltaF = deltaF_baseline - deltaF_current  # baseline - current
+
+            results.append({
+                'Co_pF': co_val,
+                'Peak1_GHz': f1,
+                'Peak2_GHz': f2,
+                'deltaF_current_GHz': deltaF_current,
+                'DeltaF_GHz': DeltaF
+            })
+        else:
+            # Handle single peak case
+            results.append({
+                'Co_pF': co_val,
+                'Peak1_GHz': None,
+                'Peak2_GHz': None,
+                'deltaF_current_GHz': None,
+                'DeltaF_GHz': None
+            })
+
+    return pd.DataFrame(results), deltaF_baseline
+```
 
 ### Step 5: Generate Plots
-
-Create 3 separate plots (one per Excel file):
-- **X-axis**: Co (pF) - capacitance values from 0 to 1
-- **Y-axis**: DeltaF - the change in frequency difference
-- **Title**: Include sensor/file identifier
-- **Labels**: Include units (pF for Co, Hz/MHz/GHz for DeltaF)
 
 ```python
 import matplotlib.pyplot as plt
 
-plt.figure(figsize=(10, 6))
-plt.plot(co_values, delta_f_values, 'o-', linewidth=2, markersize=8)
-plt.xlabel('Co (pF)')
-plt.ylabel('ΔF (GHz)')  # Adjust units as appropriate
-plt.title('Sensor Response: ΔF vs Capacitance')
-plt.grid(True)
-plt.savefig('output/sensor1_deltaF_vs_Co.png', dpi=300, bbox_inches='tight')
+def plot_deltaF_vs_Co(results_df, sensor_name, output_path):
+    """Create DeltaF vs Co plot."""
+
+    # Filter out None values
+    valid = results_df.dropna(subset=['DeltaF_GHz'])
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(valid['Co_pF'], valid['DeltaF_GHz'], 'o-',
+             linewidth=2, markersize=6, color='#1f77b4')
+
+    plt.xlabel('Co (pF)', fontsize=12)
+    plt.ylabel('ΔF (GHz)', fontsize=12)
+    plt.title(f'{sensor_name}: ΔF vs Capacitance', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {output_path}")
 ```
 
 ## Output Requirements
@@ -102,89 +193,69 @@ plt.savefig('output/sensor1_deltaF_vs_Co.png', dpi=300, bbox_inches='tight')
 ### 1. Plots (Required)
 
 Save in `output/` directory:
-- `sensor1_deltaF_vs_Co.png`
-- `sensor2_deltaF_vs_Co.png`
-- `sensor3_deltaF_vs_Co.png`
+- `reciprocal_with_IC_deltaF_vs_Co.png`
+- `non_reciprocal_deltaF_vs_Co.png`
+- `reciprocal_without_IC_deltaF_vs_Co.png`
 
-### 2. Processed Data (Optional but Recommended)
+### 2. Processed Data (CSV)
 
-Save CSV files with the extracted data:
+Save CSV files with extracted data:
 ```
 output/
-├── sensor1_results.csv
-├── sensor2_results.csv
-└── sensor3_results.csv
+├── reciprocal_with_IC_results.csv
+├── non_reciprocal_results.csv
+└── reciprocal_without_IC_results.csv
 ```
 
-CSV format:
+CSV columns:
 ```csv
-Co_pF,Peak1_freq,Peak2_freq,deltaF_current,DeltaF
-0.0,2.45,2.55,0.10,0.00
-0.1,2.46,2.54,0.08,0.02
+Co_pF,Peak1_GHz,Peak2_GHz,deltaF_current_GHz,DeltaF_GHz
+0.0,4.42,4.80,0.38,0.00
+0.01,4.41,4.79,0.38,0.00
 ...
 ```
 
-### 3. Summary Report (Optional)
+## Special Cases to Handle
 
-A markdown summary with:
-- Baseline deltaF for each sensor
-- Maximum DeltaF observed
-- Any data quality issues encountered
+### 1. Reciprocal Sensor WITHOUT IC: No data at C0=0
 
-## Troubleshooting Peak Detection
+The file `reciprocal sensor without IC (0-1pf_.xlsx` has all zeros at C0=0.
 
-### Problem: Can't find exactly 2 peaks
+**Solution**: Use C0=0.01 pF (or first available non-zero Co) as baseline.
 
-**Solutions**:
-1. Adjust `prominence` parameter (try values from 0.1 to 2.0)
-2. Adjust `distance` parameter based on expected peak separation
-3. Apply smoothing before peak detection:
-   ```python
-   from scipy.ndimage import gaussian_filter1d
-   smoothed = gaussian_filter1d(transmission, sigma=2)
-   ```
-4. Use `scipy.signal.find_peaks` with `height` parameter to filter noise
+### 2. Non-Reciprocal Sensor: Possibly only 1 peak visible
 
-### Problem: Peaks are too close together
+The `non reciprocal sensor (0-1) co sweep.xlsx` may show only one dominant peak.
 
-**Solutions**:
-1. Reduce `distance` parameter
-2. Increase frequency resolution if possible
-3. Use derivative-based peak detection for overlapping peaks
+**Possible solutions**:
+1. Look for a secondary peak with lower prominence threshold
+2. Use derivative-based peak detection
+3. Document this as a limitation and skip this file if 2 peaks cannot be found
+4. Check if peaks exist in a specific frequency range (e.g., 3-6 GHz)
 
-### Problem: Inconsistent peak identification across Co values
+### 3. Peak Tracking Across Co Values
 
-**Solutions**:
-1. Track peaks across consecutive Co values
-2. Use peak properties (height, width) to match corresponding peaks
-3. Implement a peak tracking algorithm that follows peaks as Co changes
+As Co increases, peaks may shift in frequency. Ensure you're tracking the same physical peaks:
+- Peaks should shift smoothly, not jump
+- If a peak disappears, flag this in the output
 
-## Code Structure Recommendation
+## Expected Results (Approximate)
 
-```
-src/
-├── process_sensor_data.py   # Main processing script
-├── peak_detection.py        # Peak finding utilities
-├── plotting.py              # Visualization functions
-└── utils.py                 # Data loading helpers
-```
+Based on initial analysis:
 
-## Example Usage
-
-```bash
-# Run the main processing script
-python src/process_sensor_data.py
-
-# Or with specific input files
-python src/process_sensor_data.py --input data/sensor1.xlsx data/sensor2.xlsx data/sensor3.xlsx
-```
+| Sensor | Baseline Peaks | Expected Baseline ΔF |
+|--------|----------------|---------------------|
+| Reciprocal with IC | 4.42 GHz, 4.80 GHz | ~0.38 GHz |
+| Non-Reciprocal | ~3.97 GHz, ? | TBD |
+| Reciprocal without IC | 4.42 GHz, 4.80 GHz (at C0=0.1) | ~0.38 GHz |
 
 ## Validation Checklist
 
-- [ ] All 3 Excel files processed successfully
-- [ ] Two peaks identified for each Co value in each file
-- [ ] Baseline calculated at Co = 0
-- [ ] DeltaF calculated as (baseline - current)
-- [ ] 3 plots generated with proper labels
-- [ ] Results saved to output directory
-- [ ] Code handles edge cases gracefully
+- [ ] All 3 Excel files loaded successfully
+- [ ] Handle C0=0 missing data in "without IC" file
+- [ ] Two peaks identified (or documented if not possible)
+- [ ] Baseline calculated correctly
+- [ ] DeltaF = baseline - current (not current - baseline)
+- [ ] 3 plots saved to output/
+- [ ] CSV results saved to output/
+- [ ] Edge cases handled gracefully with warnings
