@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Data files (keep structure, ignore large data)
+*.xlsx
+*.xls
+!data/README.md
+
+# Output files (generated, don't commit)
+output/*.png
+output/*.csv
+output/*.pdf
+!output/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
