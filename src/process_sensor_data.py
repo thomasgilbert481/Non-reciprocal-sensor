@@ -191,8 +191,8 @@ def process_single_peak_sensor(freq, co_data):
     return pd.DataFrame(results), f_baseline
 
 
-def plot_deltaF_vs_Co(results_df, sensor_name, output_path, ylabel='ΔF (GHz)'):
-    """Create DeltaF vs Co plot."""
+def plot_deltaF_vs_Co(results_df, sensor_name, output_path):
+    """Create DeltaF vs Co plot with absolute values."""
 
     # Filter out None values
     valid = results_df.dropna(subset=['DeltaF_GHz'])
@@ -202,12 +202,13 @@ def plot_deltaF_vs_Co(results_df, sensor_name, output_path, ylabel='ΔF (GHz)'):
         return False
 
     plt.figure(figsize=(10, 6))
-    plt.plot(valid['Co_pF'], valid['DeltaF_GHz'], 'o-',
+    # Use absolute value for Y-axis
+    plt.plot(valid['Co_pF'], valid['DeltaF_GHz'].abs(), 'o-',
              linewidth=2, markersize=6, color='#1f77b4')
 
     plt.xlabel('Co (pF)', fontsize=12)
-    plt.ylabel(ylabel, fontsize=12)
-    plt.title(f'{sensor_name}: ΔF vs Capacitance', fontsize=14)
+    plt.ylabel('|ΔF| (GHz)', fontsize=12)
+    plt.title(f'{sensor_name}: |ΔF| vs Capacitance', fontsize=14)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
@@ -215,6 +216,33 @@ def plot_deltaF_vs_Co(results_df, sensor_name, output_path, ylabel='ΔF (GHz)'):
     plt.close()
     print(f"  Saved plot: {output_path}")
     return True
+
+
+def plot_summary(all_results, output_path):
+    """Create summary plot with all sensors on one graph."""
+
+    plt.figure(figsize=(12, 7))
+
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
+    markers = ['o', 's', '^']
+
+    for i, (name, results_df) in enumerate(all_results.items()):
+        valid = results_df.dropna(subset=['DeltaF_GHz'])
+        if len(valid) > 0:
+            plt.plot(valid['Co_pF'], valid['DeltaF_GHz'].abs(),
+                     marker=markers[i], linestyle='-', linewidth=2, markersize=5,
+                     color=colors[i], label=name)
+
+    plt.xlabel('Co (pF)', fontsize=12)
+    plt.ylabel('|ΔF| (GHz)', fontsize=12)
+    plt.title('Sensor Comparison: |ΔF| vs Capacitance', fontsize=14)
+    plt.legend(loc='best', fontsize=10)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"\nSaved summary plot: {output_path}")
 
 
 def main():
@@ -249,6 +277,9 @@ def main():
     print("Sensor Data Processing")
     print("=" * 60)
 
+    # Store results for summary plot
+    all_results = {}
+
     for sensor in sensors:
         print(f"\nProcessing: {sensor['name']}")
         print("-" * 40)
@@ -262,23 +293,24 @@ def main():
             if sensor['single_peak']:
                 print("  Mode: Single peak tracking (frequency shift)")
                 results_df, baseline = process_single_peak_sensor(freq, co_data)
-                ylabel = 'ΔF (GHz) - Peak Shift'
             else:
                 print("  Mode: Two-peak difference tracking")
                 results_df, baseline = process_sensor(freq, co_data)
-                ylabel = 'ΔF (GHz)'
 
-            # Save CSV
-            csv_path = output_dir / f"{sensor['output_prefix']}_results.csv"
-            results_df.to_csv(csv_path, index=False)
-            print(f"  Saved CSV: {csv_path}")
+            # Store for summary plot
+            all_results[sensor['name']] = results_df
 
-            # Generate plot
+            # Generate individual plot
             plot_path = output_dir / f"{sensor['output_prefix']}_deltaF_vs_Co.png"
-            plot_deltaF_vs_Co(results_df, sensor['name'], plot_path, ylabel)
+            plot_deltaF_vs_Co(results_df, sensor['name'], plot_path)
 
         except Exception as e:
             print(f"  Error: {e}")
+
+    # Generate summary plot with all sensors
+    if all_results:
+        summary_path = output_dir / "summary_all_sensors.png"
+        plot_summary(all_results, summary_path)
 
     print("\n" + "=" * 60)
     print("Processing complete!")
