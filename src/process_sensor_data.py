@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
+from scipy.ndimage import gaussian_filter1d
 import re
 from pathlib import Path
 
@@ -31,6 +32,32 @@ def load_sensor_data(filepath):
     return freq, co_data
 
 
+def find_two_peaks_second_derivative(freq, transmission):
+    """Find peaks using second derivative (detects shoulders/merged peaks)."""
+
+    # Smooth the data
+    trans_smooth = gaussian_filter1d(transmission, sigma=3)
+
+    # Calculate second derivative
+    d1 = np.gradient(trans_smooth, freq)
+    d2 = np.gradient(d1, freq)
+
+    # Peaks in negative second derivative indicate peaks AND shoulders
+    d2_neg = -d2
+    d2_peaks, _ = find_peaks(d2_neg, prominence=0.0005, distance=30)
+
+    # Filter to reasonable frequency range (1-8 GHz for these sensors)
+    d2_peaks = d2_peaks[(freq[d2_peaks] > 1) & (freq[d2_peaks] < 8)]
+
+    if len(d2_peaks) >= 2:
+        # Take the two most prominent features
+        heights = d2_neg[d2_peaks]
+        top2_idx = d2_peaks[heights.argsort()[-2:]]
+        return sorted(top2_idx)
+
+    return None
+
+
 def find_two_peaks(freq, transmission):
     """Find the two main peaks in transmission spectrum."""
 
@@ -46,7 +73,12 @@ def find_two_peaks(freq, transmission):
             top2_idx = peaks[heights.argsort()[-2:]]
             return sorted(top2_idx)
 
-    # If only 1 peak found, return None
+    # Fallback: use second derivative to find shoulders/merged peaks
+    result = find_two_peaks_second_derivative(freq, transmission)
+    if result is not None:
+        return result
+
+    # If still only 1 peak found, return None
     return None
 
 
