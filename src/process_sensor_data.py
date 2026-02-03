@@ -91,6 +91,60 @@ def load_sensor_data(filepath):
 # PEAK DETECTION FUNCTIONS
 # =============================================================================
 
+def interpolate_peak(freq, transmission, idx):
+    """
+    Refine peak frequency using parabolic (quadratic) interpolation.
+
+    When data has coarse frequency resolution, the true peak lies between
+    grid points. This function fits a parabola through the peak sample and
+    its two neighbors, then finds the vertex of that parabola — giving
+    sub-sample frequency accuracy.
+
+    For a dataset with 0.1 GHz spacing, this can improve precision from
+    0.1 GHz to ~0.01 GHz, eliminating the "staircase" quantization effect.
+
+    Parameters
+    ----------
+    freq : numpy.ndarray
+        Frequency values in GHz
+    transmission : numpy.ndarray
+        Transmission (|S21|) values
+    idx : int
+        Index of the detected peak in the arrays
+
+    Returns
+    -------
+    float
+        Interpolated peak frequency in GHz
+    """
+    # If the peak is at the edge of the array, we can't fit 3 points
+    # so just return the raw grid frequency
+    if idx <= 0 or idx >= len(freq) - 1:
+        return freq[idx]
+
+    # Get the three points: left neighbor, peak, right neighbor
+    f_left, f_center, f_right = freq[idx - 1], freq[idx], freq[idx + 1]
+    y_left, y_center, y_right = transmission[idx - 1], transmission[idx], transmission[idx + 1]
+
+    # Parabolic interpolation formula for the vertex offset from center
+    # Derived from fitting y = a*x^2 + b*x + c through three equally-spaced points
+    # The vertex offset (in samples) is: delta = 0.5 * (y_left - y_right) / (y_left - 2*y_center + y_right)
+    denominator = y_left - 2 * y_center + y_right
+    if abs(denominator) < 1e-20:
+        # Denominator near zero means the three points are nearly collinear (no curvature)
+        return freq[idx]
+
+    delta = 0.5 * (y_left - y_right) / denominator
+
+    # Clamp delta to [-0.5, 0.5] to stay within the neighboring interval
+    delta = max(-0.5, min(0.5, delta))
+
+    # Convert sample offset to frequency offset using the local spacing
+    freq_step = f_right - f_left  # Spanning 2 samples
+    interpolated_freq = f_center + delta * (freq_step / 2)
+
+    return interpolated_freq
+
 def find_two_peaks_second_derivative(freq, transmission):
     """
     Find peaks using second derivative analysis.
@@ -364,9 +418,10 @@ def get_baseline(freq, co_data, baseline_co=0.0):
     transmission = co_data[baseline_co]
     peak_indices = find_two_peaks(freq, transmission)
 
-    # Extract the frequencies of the two peaks
-    f1 = freq[peak_indices[0]]  # Lower frequency peak
-    f2 = freq[peak_indices[1]]  # Higher frequency peak
+    # Extract the frequencies of the two peaks using parabolic interpolation
+    # for sub-grid-point accuracy (important for coarse-resolution datasets)
+    f1 = interpolate_peak(freq, transmission, peak_indices[0])  # Lower frequency peak
+    f2 = interpolate_peak(freq, transmission, peak_indices[1])  # Higher frequency peak
 
     # Calculate the baseline frequency difference
     deltaF_baseline = abs(f2 - f1)
@@ -429,8 +484,9 @@ def process_sensor(freq, co_data):
 
         if peak_indices is not None:
             # Successfully found 2 peaks - calculate metrics
-            f1 = freq[peak_indices[0]]  # Lower frequency peak
-            f2 = freq[peak_indices[1]]  # Higher frequency peak
+            # Use parabolic interpolation for sub-grid-point frequency accuracy
+            f1 = interpolate_peak(freq, transmission, peak_indices[0])  # Lower frequency peak
+            f2 = interpolate_peak(freq, transmission, peak_indices[1])  # Higher frequency peak
             deltaF_current = abs(f2 - f1)  # Current peak separation
 
             # DeltaF = baseline - current
