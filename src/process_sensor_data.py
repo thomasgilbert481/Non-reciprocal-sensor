@@ -70,13 +70,14 @@ def load_sensor_data(filepath):
 
     # Extract transmission data for each Co value
     # We need to parse column names to find the Co value embedded in them
+    # Some files use 'C0 =' (zero) and others use 'Co =' (lowercase o)
     co_data = {}
     for col in df.columns:
-        # Look for columns containing 'C0 =' which indicates transmission data
-        if 'C0 =' in col:
+        # Look for columns containing 'C0 =' or 'Co =' which indicates transmission data
+        if 'C0 =' in col or 'Co =' in col:
             # Use regex to extract the numeric Co value from the column name
-            # Pattern matches: 'C0 = ' followed by digits and optional decimal
-            match = re.search(r'C0 = ([\d.]+)', col)
+            # Pattern matches: 'C0 = ' or 'Co = ' followed by digits and optional decimal
+            match = re.search(r'C[0o]\s*=\s*([\d.]+)', col)
             if match:
                 # Convert the matched string to a float (e.g., '0.01' -> 0.01)
                 co_val = float(match.group(1))
@@ -604,8 +605,8 @@ def plot_summary(all_results, output_path):
     plt.figure(figsize=(12, 7))
 
     # Define distinct colors and markers for each sensor
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green
-    markers = ['o', 's', '^']  # Circle, Square, Triangle
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']  # Blue, Orange, Green, Red
+    markers = ['o', 's', '^', 'D']  # Circle, Square, Triangle, Diamond
 
     # Plot each sensor's data
     for i, (name, results_df) in enumerate(all_results.items()):
@@ -767,7 +768,7 @@ def main():
     # ==========================================================================
     # SENSOR CONFIGURATION
     # ==========================================================================
-    # Define the three sensor datasets to process
+    # Define the four sensor datasets to process
     # Each entry specifies:
     # - file: path to the Excel data file
     # - name: human-readable name for plot titles
@@ -791,6 +792,12 @@ def main():
             'file': 'data/reciprocal sensor without IC (0-1pf_.xlsx',
             'name': 'Reciprocal Sensor without IC',
             'output_prefix': 'reciprocal_without_IC',
+            'single_peak': False  # Use two-peak detection
+        },
+        {
+            'file': 'data/Non reciprocal Sensor (0-1pf) co sweep 100ohm and .1pf cin-cout.xlsx',
+            'name': 'Non-Reciprocal Sensor (100Ω, 0.1pF Cin/Cout)',
+            'output_prefix': 'non_reciprocal_100ohm',
             'single_peak': False  # Use two-peak detection
         }
     ]
