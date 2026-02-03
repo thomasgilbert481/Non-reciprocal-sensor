@@ -151,8 +151,37 @@ def find_two_peaks_second_derivative(freq, transmission):
         heights = d2_neg[d2_peaks]
         # argsort gives indices that would sort the array; take last 2 (largest)
         top2_idx = d2_peaks[heights.argsort()[-2:]]
-        # Return sorted by index (i.e., by frequency, lower first)
-        return sorted(top2_idx)
+        # Sort by index (i.e., by frequency, lower first)
+        result = sorted(top2_idx)
+
+        # Step 7: Refinement - snap to nearest actual local maximum if one exists
+        # The second derivative detects inflection points (where curvature changes),
+        # which can occur on the rising/falling slope of a peak, not at the actual
+        # peak maximum. For example, a broad asymmetric peak at 4.6 GHz may have
+        # its strongest inflection point at 4.4 GHz on the rising edge.
+        # We fix this by finding all true local maxima in the smoothed data and
+        # snapping each second-derivative feature to the nearest local maximum
+        # if one exists within 0.5 GHz. For true shoulders (no nearby local max),
+        # the position is left unchanged.
+        local_maxima, _ = find_peaks(trans_smooth, distance=20)
+
+        refined = list(result)
+        for i in range(len(refined)):
+            idx = refined[i]
+            # Find local maxima within 0.5 GHz of this second-derivative feature
+            nearby = local_maxima[np.abs(freq[local_maxima] - freq[idx]) < 0.5]
+            if len(nearby) > 0:
+                # Among nearby maxima, pick the one with the highest transmission
+                # This ensures we snap to the actual peak, not a noise blip
+                best = nearby[trans_smooth[nearby].argmax()]
+                refined[i] = int(best)
+
+        # Make sure both features didn't snap to the same local maximum
+        # If they did, revert the second one to its original position
+        if refined[0] == refined[1]:
+            refined = list(result)
+
+        return sorted(refined)
 
     # If we couldn't find 2 features, return None to signal failure
     return None
