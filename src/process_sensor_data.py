@@ -118,6 +118,13 @@ def find_two_peaks_second_derivative(freq, transmission):
         Sorted list of two indices corresponding to detected features,
         or None if fewer than 2 features found
     """
+    # Step 0: Calculate the frequency resolution to set distance parameters adaptively
+    # The data may have different numbers of points (e.g., 1991 vs 200), so we
+    # compute how many samples correspond to a physical frequency separation
+    freq_step = (freq[-1] - freq[0]) / (len(freq) - 1)  # GHz per sample
+    # Minimum ~0.3 GHz separation between detected features
+    min_distance = max(2, int(0.3 / freq_step))
+
     # Step 1: Smooth the data using a Gaussian filter
     # sigma=3 provides moderate smoothing to reduce noise while preserving features
     # Without smoothing, the second derivative would be very noisy
@@ -139,8 +146,8 @@ def find_two_peaks_second_derivative(freq, transmission):
 
     # Use scipy's find_peaks with:
     # - prominence=0.0005: very low threshold to catch subtle features
-    # - distance=30: minimum ~0.3 GHz separation between detected features
-    d2_peaks, _ = find_peaks(d2_neg, prominence=0.0005, distance=30)
+    # - distance=min_distance: adaptive minimum separation between detected features
+    d2_peaks, _ = find_peaks(d2_neg, prominence=0.0005, distance=min_distance)
 
     # Step 5: Filter to the relevant frequency range (1-8 GHz)
     # The sensor resonances occur in this range; features outside are artifacts
@@ -164,7 +171,7 @@ def find_two_peaks_second_derivative(freq, transmission):
         # snapping each second-derivative feature to the nearest local maximum
         # if one exists within 0.5 GHz. For true shoulders (no nearby local max),
         # the position is left unchanged.
-        local_maxima, _ = find_peaks(trans_smooth, distance=20)
+        local_maxima, _ = find_peaks(trans_smooth, distance=min_distance)
 
         refined = list(result)
         for i in range(len(refined)):
@@ -217,14 +224,19 @@ def find_two_peaks(freq, transmission):
         Sorted list of two indices [idx1, idx2] where idx1 < idx2,
         or None if two peaks could not be found
     """
+    # Calculate adaptive distance parameter based on frequency resolution
+    # Ensures consistent physical separation (~0.2 GHz) regardless of grid density
+    freq_step = (freq[-1] - freq[0]) / (len(freq) - 1)  # GHz per sample
+    min_distance = max(2, int(0.2 / freq_step))
+
     # Stage 1: Try standard peak detection with decreasing prominence thresholds
     # Prominence measures how much a peak stands out from surrounding baseline
     for prominence in [0.1, 0.05, 0.01, 0.005, 0.001]:
         # find_peaks returns indices of local maxima meeting the criteria
-        # distance=20 means peaks must be at least 20 samples (~0.2 GHz) apart
+        # min_distance ensures peaks are at least ~0.2 GHz apart
         peaks, props = find_peaks(transmission,
                                    prominence=prominence,
-                                   distance=20)
+                                   distance=min_distance)
 
         # If we found at least 2 peaks, select the two tallest
         if len(peaks) >= 2:
