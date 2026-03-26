@@ -155,9 +155,9 @@ def main():
     ]
     ax.legend(handles=handles, fontsize=10)
 
-    ax.set_xlabel(r'$\log_{10}(C_{\rm sensing}\ [\rm pF])$', fontsize=14)
+    ax.set_xlabel(r'$\log_{10}(\varepsilon\ [\rm pF])$', fontsize=14)
     ax.set_ylabel(r'$\log_{10}(\Delta f\ [\rm MHz])$', fontsize=14)
-    ax.set_title('Amp Circuit: Frequency Splitting vs Perturbation (Log-Log)',
+    ax.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$ (Log-Log)',
                  fontsize=13)
     ax.grid(True, alpha=0.3)
 
