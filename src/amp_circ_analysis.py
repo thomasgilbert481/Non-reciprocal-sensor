@@ -22,6 +22,7 @@ from pathlib import Path
 DATA_FILE   = Path('data/Amp circ Csensing sweep (0-1600pf).xlsx')
 OUTPUT_DIR  = Path('output')
 FREQ_RANGE  = (5, 40)   # MHz — search window for peaks
+C1_PF       = 3200.0    # Left tank capacitor (pF)
 
 # Manually identified peaks (MHz) for traces where auto-detection fails
 # Format: Csensing_pF -> (f1_MHz, f2_MHz)
@@ -95,9 +96,10 @@ def main():
 
         if f1 is not None:
             delta_f = f2 - f1
-            results.append({'Csensing_pF': c_pf, 'f1_MHz': f1,
-                            'f2_MHz': f2, 'delta_f_MHz': delta_f,
-                            'source': src})
+            epsilon = c_pf / (2.0 * C1_PF)
+            results.append({'Csensing_pF': c_pf, 'epsilon': epsilon,
+                            'f1_MHz': f1, 'f2_MHz': f2,
+                            'delta_f_MHz': delta_f, 'source': src})
             print(f"  Csensing={c_pf:5d} pF  →  f1={f1:.2f} MHz, f2={f2:.2f} MHz, "
                   f"Δf={delta_f:.2f} MHz  [{src}]")
         else:
@@ -111,7 +113,7 @@ def main():
     df = pd.DataFrame(results)
 
     # --- log-log fit ---
-    x = df['Csensing_pF'].values.astype(float)
+    x = df['epsilon'].values.astype(float)
     y = df['delta_f_MHz'].values.astype(float)
 
     valid = (x > 0) & (y > 0)
@@ -128,7 +130,7 @@ def main():
     fig, ax = plt.subplots(figsize=(9, 6))
 
     for _, row in df.iterrows():
-        lx = np.log10(row['Csensing_pF'])
+        lx = np.log10(row['epsilon'])
         ly = np.log10(row['delta_f_MHz'])
         marker = 's' if row.get('source') == 'manual' else 'o'
         color  = '#ff7f0e' if row['Csensing_pF'] >= 1500 else '#1f77b4'
@@ -155,7 +157,7 @@ def main():
     ]
     ax.legend(handles=handles, fontsize=10)
 
-    ax.set_xlabel(r'$\log_{10}(\varepsilon\ [\rm pF])$', fontsize=14)
+    ax.set_xlabel(r'$\log_{10}(\varepsilon)$  where  $\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=13)
     ax.set_ylabel(r'$\log_{10}(\Delta f\ [\rm MHz])$', fontsize=14)
     ax.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$ (Log-Log)',
                  fontsize=13)
