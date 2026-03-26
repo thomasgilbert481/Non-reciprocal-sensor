@@ -23,6 +23,15 @@ DATA_FILE   = Path('data/Amp circ Csensing sweep (0-1600pf).xlsx')
 OUTPUT_DIR  = Path('output')
 FREQ_RANGE  = (5, 40)   # MHz — search window for peaks
 
+# Manually identified peaks (MHz) for traces where auto-detection fails
+# Format: Csensing_pF -> (f1_MHz, f2_MHz)
+MANUAL_OVERRIDES = {
+    600:  (19.0, 26.0),
+    700:  (19.0, 25.0),
+    800:  (18.0, 25.0),
+    900:  (17.0, 24.0),
+}
+
 
 # ---------------------------------------------------------------------------
 # DATA LOADING
@@ -77,13 +86,20 @@ def main():
     results = []
     skipped = []
     for c_pf in sorted(traces):
-        f1, f2 = find_two_peaks(freq_mhz, traces[c_pf])
+        if c_pf in MANUAL_OVERRIDES:
+            f1, f2 = MANUAL_OVERRIDES[c_pf]
+            src = 'manual'
+        else:
+            f1, f2 = find_two_peaks(freq_mhz, traces[c_pf])
+            src = 'auto'
+
         if f1 is not None:
             delta_f = f2 - f1
             results.append({'Csensing_pF': c_pf, 'f1_MHz': f1,
-                            'f2_MHz': f2, 'delta_f_MHz': delta_f})
+                            'f2_MHz': f2, 'delta_f_MHz': delta_f,
+                            'source': src})
             print(f"  Csensing={c_pf:5d} pF  →  f1={f1:.2f} MHz, f2={f2:.2f} MHz, "
-                  f"Δf={delta_f:.2f} MHz")
+                  f"Δf={delta_f:.2f} MHz  [{src}]")
         else:
             skipped.append(c_pf)
             print(f"  Csensing={c_pf:5d} pF  →  could not find 2 peaks (skipped)")
@@ -111,13 +127,12 @@ def main():
     # --- plot ---
     fig, ax = plt.subplots(figsize=(9, 6))
 
-    # Colour points: below EP (<=500) vs above EP (>=1500)
-    colors = ['#1f77b4' if row['Csensing_pF'] <= 500 else '#ff7f0e'
-              for _, row in df.iterrows()]
-    for (_, row), c in zip(df.iterrows(), colors):
+    for _, row in df.iterrows():
         lx = np.log10(row['Csensing_pF'])
         ly = np.log10(row['delta_f_MHz'])
-        ax.plot(lx, ly, 'o', markersize=9, color=c, zorder=5)
+        marker = 's' if row.get('source') == 'manual' else 'o'
+        color  = '#ff7f0e' if row['Csensing_pF'] >= 1500 else '#1f77b4'
+        ax.plot(lx, ly, marker, markersize=9, color=color, zorder=5)
 
     ax.plot(log_x, fit_line, '-', color='#d62728', linewidth=2,
             label=f'Linear fit  (slope = {slope:.3f})')
@@ -130,7 +145,9 @@ def main():
     from matplotlib.lines import Line2D
     handles = [
         Line2D([0],[0], marker='o', color='w', markerfacecolor='#1f77b4',
-               markersize=9, label='Two peaks  (≤ 500 pF)'),
+               markersize=9, label='Auto-detected peaks'),
+        Line2D([0],[0], marker='s', color='w', markerfacecolor='#1f77b4',
+               markersize=9, label='Manually identified peaks'),
         Line2D([0],[0], marker='o', color='w', markerfacecolor='#ff7f0e',
                markersize=9, label='Two peaks  (≥ 1500 pF)'),
         Line2D([0],[0], color='#d62728', linewidth=2,
