@@ -229,7 +229,7 @@ def main():
     # Power-law fit curve in linear space
     eps_range = np.linspace(0, x_fit.max(), 300)
     # avoid log(0): start from small value for the curve
-    eps_curve = np.linspace(x_fit.min(), x_fit.max(), 300)
+    eps_curve = np.linspace(1e-4, x_fit.max(), 300)   # start near 0, not at x_fit.min()
     resp_fit_curve = 10**(slope * np.log10(eps_curve) + intercept)
     ax2.plot(eps_curve, resp_fit_curve, '-', color='#d62728', linewidth=2,
              label=f'Fit: $\\propto \\varepsilon^{{{slope:.3f}}}$')
