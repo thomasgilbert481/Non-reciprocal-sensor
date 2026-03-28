@@ -174,6 +174,52 @@ def main():
     plt.close()
     print(f"Saved: {out_path}")
 
+    # --- linear plot: Δf vs ε ---
+    from matplotlib.lines import Line2D as _L2D
+
+    fig2, ax2 = plt.subplots(figsize=(9, 6))
+
+    for _, row in df.iterrows():
+        marker = 's' if row.get('source') == 'manual' else 'o'
+        color  = '#ff7f0e' if row['Csensing_pF'] >= 1500 else '#1f77b4'
+        ax2.plot(row['epsilon'], row['delta_f_MHz'],
+                 marker, markersize=9, color=color, zorder=5)
+
+    # Power-law fit curve in linear space
+    eps_range = np.linspace(x_fit.min(), x_fit.max(), 300)
+    df_fit = 10**(slope * np.log10(eps_range) + intercept)
+    ax2.plot(eps_range, df_fit, '-', color='#d62728', linewidth=2,
+             label=f'Fit: $\\Delta f \\propto \\varepsilon^{{{slope:.3f}}}$')
+
+    # Shade EP region
+    ep_lo = 550 / (2 * C1_PF)
+    ep_hi = 1450 / (2 * C1_PF)
+    ax2.axvspan(ep_lo, ep_hi, color='grey', alpha=0.15,
+                label='EP region (600–1400 pF)')
+
+    handles2 = [
+        _L2D([0],[0], marker='o', color='w', markerfacecolor='#1f77b4',
+             markersize=9, label='Auto-detected peaks'),
+        _L2D([0],[0], marker='s', color='w', markerfacecolor='#1f77b4',
+             markersize=9, label='Manually identified peaks'),
+        _L2D([0],[0], marker='o', color='w', markerfacecolor='#ff7f0e',
+             markersize=9, label='Two peaks  (≥ 1500 pF)'),
+        _L2D([0],[0], color='#d62728', linewidth=2,
+             label=f'Fit: $\\Delta f \\propto \\varepsilon^{{{slope:.3f}}}$'),
+    ]
+    ax2.legend(handles=handles2, fontsize=10)
+
+    ax2.set_xlabel(r'$\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=14)
+    ax2.set_ylabel(r'$\Delta f$ (MHz)', fontsize=14)
+    ax2.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$', fontsize=13)
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out_path2 = OUTPUT_DIR / 'amp_circ_linear.png'
+    plt.savefig(out_path2, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {out_path2}")
+
     if skipped:
         print(f"\nSkipped {len(skipped)} traces (no 2 peaks): {skipped}")
 
