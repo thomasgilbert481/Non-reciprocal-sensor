@@ -22,14 +22,30 @@ from pathlib import Path
 DATA_FILE   = Path('data/Amp circ Csensing sweep (0-1600pf).xlsx')
 OUTPUT_DIR  = Path('output')
 FREQ_RANGE  = (5, 40)   # MHz — search window for peaks
+C1_PF       = 3200.0    # Left tank capacitor (pF)
 
-# Manually identified peaks (MHz) for traces where auto-detection fails
-# Format: Csensing_pF -> (f1_MHz, f2_MHz)
+# Manually verified peak frequencies (MHz) for all Csensing values.
+# Format: Csensing_pF -> (f1_MHz, f2_MHz)  [values given in GHz, converted ×1000]
+# Note: Csensing=0 has ε=0 — included in linear plot only (excluded from log-log)
+# Note: Csensing=1100 not available
 MANUAL_OVERRIDES = {
-    600:  (19.0, 26.0),
-    700:  (19.0, 25.0),
-    800:  (18.0, 25.0),
-    900:  (17.0, 24.0),
+    0:    (20.0,  32.0),
+    100:  (20.0,  30.2),
+    200:  (20.0,  29.0),
+    300:  (19.9,  27.9),
+    400:  (19.8,  27.0),
+    500:  (19.0,  26.3),
+    600:  (18.6,  25.7),
+    700:  (18.4,  25.2),
+    800:  (18.3,  24.7),
+    900:  (18.0,  24.3),
+    1000: (17.5,  24.2),
+    1100: (17.1,  24.1),
+    1200: (16.4,  23.6),
+    1300: (16.4,  23.5),
+    1400: (16.65, 23.2),
+    1500: (15.9,  23.2),
+    1600: (15.7,  22.8),
 }
 
 
@@ -82,22 +98,26 @@ def main():
     freq_mhz, traces = load_data(DATA_FILE)
     print(f"  {len(traces)} traces, freq {freq_mhz[0]:.1f}–{freq_mhz[-1]:.1f} MHz")
 
-    # --- extract splitting for each Csensing ---
+    # --- extract splitting — manual overrides take priority over auto-detection ---
+    all_csensing = sorted(set(list(MANUAL_OVERRIDES.keys()) + list(traces.keys())))
     results = []
     skipped = []
-    for c_pf in sorted(traces):
+    for c_pf in all_csensing:
         if c_pf in MANUAL_OVERRIDES:
             f1, f2 = MANUAL_OVERRIDES[c_pf]
             src = 'manual'
-        else:
+        elif c_pf in traces:
             f1, f2 = find_two_peaks(freq_mhz, traces[c_pf])
             src = 'auto'
+        else:
+            continue
 
         if f1 is not None:
             delta_f = f2 - f1
-            results.append({'Csensing_pF': c_pf, 'f1_MHz': f1,
-                            'f2_MHz': f2, 'delta_f_MHz': delta_f,
-                            'source': src})
+            epsilon = c_pf / (2.0 * C1_PF)   # ε=0 when c_pf=0
+            results.append({'Csensing_pF': c_pf, 'epsilon': epsilon,
+                            'f1_MHz': f1, 'f2_MHz': f2,
+                            'delta_f_MHz': delta_f, 'source': src})
             print(f"  Csensing={c_pf:5d} pF  →  f1={f1:.2f} MHz, f2={f2:.2f} MHz, "
                   f"Δf={delta_f:.2f} MHz  [{src}]")
         else:
@@ -110,11 +130,11 @@ def main():
 
     df = pd.DataFrame(results)
 
-    # --- log-log fit ---
-    x = df['Csensing_pF'].values.astype(float)
+    # --- log-log fit (exclude ε=0) ---
+    x = df['epsilon'].values.astype(float)
     y = df['delta_f_MHz'].values.astype(float)
 
-    valid = (x > 0) & (y > 0)
+    valid = (x > 0) & (y > 0)   # ε=0 (Csensing=0) excluded from log-log
     x_fit, y_fit = x[valid], y[valid]
 
     log_x = np.log10(x_fit)
@@ -128,36 +148,26 @@ def main():
     fig, ax = plt.subplots(figsize=(9, 6))
 
     for _, row in df.iterrows():
-        lx = np.log10(row['Csensing_pF'])
-        ly = np.log10(row['delta_f_MHz'])
-        marker = 's' if row.get('source') == 'manual' else 'o'
-        color  = '#ff7f0e' if row['Csensing_pF'] >= 1500 else '#1f77b4'
-        ax.plot(lx, ly, marker, markersize=9, color=color, zorder=5)
+        if row['epsilon'] <= 0:
+            continue   # skip ε=0 on log-log
+        ax.plot(np.log10(row['epsilon']), np.log10(row['delta_f_MHz']),
+                'o', markersize=9, color='#1f77b4', zorder=5)
 
     ax.plot(log_x, fit_line, '-', color='#d62728', linewidth=2,
             label=f'Linear fit  (slope = {slope:.3f})')
 
-    # Shade EP region (600–1400 pF — single peak, coalesced modes)
-    ax.axvspan(np.log10(550), np.log10(1450), color='grey', alpha=0.15,
-               label='EP region (single peak, 600–1400 pF)')
-
-    # Legend proxies for the two data groups
     from matplotlib.lines import Line2D
     handles = [
         Line2D([0],[0], marker='o', color='w', markerfacecolor='#1f77b4',
-               markersize=9, label='Auto-detected peaks'),
-        Line2D([0],[0], marker='s', color='w', markerfacecolor='#1f77b4',
-               markersize=9, label='Manually identified peaks'),
-        Line2D([0],[0], marker='o', color='w', markerfacecolor='#ff7f0e',
-               markersize=9, label='Two peaks  (≥ 1500 pF)'),
+               markersize=9, label='Manually verified data'),
         Line2D([0],[0], color='#d62728', linewidth=2,
                label=f'Linear fit  (slope = {slope:.3f})'),
     ]
-    ax.legend(handles=handles, fontsize=10)
+    ax.legend(handles=handles, fontsize=11)
 
-    ax.set_xlabel(r'$\log_{10}(C_{\rm sensing}\ [\rm pF])$', fontsize=14)
+    ax.set_xlabel(r'$\log_{10}(\varepsilon)$  where  $\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=13)
     ax.set_ylabel(r'$\log_{10}(\Delta f\ [\rm MHz])$', fontsize=14)
-    ax.set_title('Amp Circuit: Frequency Splitting vs Perturbation (Log-Log)',
+    ax.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$ (Log-Log)',
                  fontsize=13)
     ax.grid(True, alpha=0.3)
 
@@ -171,6 +181,34 @@ def main():
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved: {out_path}")
+
+    # --- linear plot: Δf vs ε ---
+    from matplotlib.lines import Line2D as _L2D
+
+    fig2, ax2 = plt.subplots(figsize=(9, 6))
+
+    ax2.plot(df['epsilon'], df['delta_f_MHz'],
+             'o', markersize=9, color='#1f77b4', zorder=5,
+             label='Manually verified data')
+
+    # Power-law fit curve in linear space (skip ε=0 for fit)
+    eps_range = np.linspace(x_fit.min(), x_fit.max(), 300)
+    df_fit_curve = 10**(slope * np.log10(eps_range) + intercept)
+    ax2.plot(eps_range, df_fit_curve, '-', color='#d62728', linewidth=2,
+             label=f'Fit: $\\Delta f \\propto \\varepsilon^{{{slope:.3f}}}$')
+
+    ax2.legend(fontsize=11)
+
+    ax2.set_xlabel(r'$\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=14)
+    ax2.set_ylabel(r'$\Delta f$ (MHz)', fontsize=14)
+    ax2.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$', fontsize=13)
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out_path2 = OUTPUT_DIR / 'amp_circ_linear.png'
+    plt.savefig(out_path2, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {out_path2}")
 
     if skipped:
         print(f"\nSkipped {len(skipped)} traces (no 2 peaks): {skipped}")
