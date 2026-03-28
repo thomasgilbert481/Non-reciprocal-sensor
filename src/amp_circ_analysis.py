@@ -139,7 +139,7 @@ def main():
     x = df['epsilon'].values.astype(float)
     y = df['response_MHz'].values.astype(float)
 
-    valid = (x > 0) & (y > 0)
+    valid = (x > 0) & (y > 0) & (x <= 0.15)   # fit only ε = 0 to 0.15
     x_fit, y_fit = x[valid], y[valid]
 
     log_x = np.log10(x_fit)
@@ -214,7 +214,7 @@ def main():
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.85))
 
     plt.tight_layout()
-    out_path = OUTPUT_DIR / 'amp_circ_loglog_response.png'
+    out_path = OUTPUT_DIR / 'amp_circ_loglog_response_eps0_015.png'
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved: {out_path}")
@@ -241,7 +241,7 @@ def main():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    out_path2 = OUTPUT_DIR / 'amp_circ_linear_response.png'
+    out_path2 = OUTPUT_DIR / 'amp_circ_linear_response_eps0_015.png'
     plt.savefig(out_path2, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved: {out_path2}")
