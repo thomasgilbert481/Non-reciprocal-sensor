@@ -149,7 +149,52 @@ def main():
 
     print(f"Log-log slope = {slope:.4f}")
 
-    # --- log-log plot ---
+    # --- original log-log plot: Δf vs ε ---
+    x_orig = df['epsilon'].values.astype(float)
+    y_orig = df['delta_f_MHz'].values.astype(float)
+    valid_orig = (x_orig > 0) & (y_orig > 0)
+    log_x_orig = np.log10(x_orig[valid_orig])
+    log_y_orig = np.log10(y_orig[valid_orig])
+    slope_orig, intercept_orig = np.polyfit(log_x_orig, log_y_orig, 1)
+
+    fig0, ax0 = plt.subplots(figsize=(9, 6))
+    ax0.plot(log_x_orig, log_y_orig, 'o', markersize=9, color='#1f77b4',
+             zorder=5, label='Manually verified data')
+    ax0.plot(log_x_orig, np.polyval([slope_orig, intercept_orig], log_x_orig),
+             '-', color='#d62728', linewidth=2,
+             label=f'Linear fit  (slope = {slope_orig:.3f})')
+    ax0.set_xlabel(r'$\log_{10}(\varepsilon)$  where  $\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=13)
+    ax0.set_ylabel(r'$\log_{10}(\Delta f\ [\rm MHz])$', fontsize=14)
+    ax0.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$ (Log-Log)', fontsize=13)
+    ax0.legend(fontsize=11)
+    ax0.grid(True, alpha=0.3)
+    ax0.text(0.05, 0.95, f'Measured slope = {slope_orig:.3f}\n(EP theory = 0.50)',
+             transform=ax0.transAxes, fontsize=12, verticalalignment='top',
+             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.85))
+    plt.tight_layout()
+    plt.savefig(OUTPUT_DIR / 'amp_circ_loglog.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {OUTPUT_DIR / 'amp_circ_loglog.png'}")
+
+    # --- original linear plot: Δf vs ε ---
+    fig1, ax1 = plt.subplots(figsize=(9, 6))
+    ax1.plot(df['epsilon'], df['delta_f_MHz'], 'o', markersize=9,
+             color='#1f77b4', zorder=5, label='Manually verified data')
+    eps_c = np.linspace(x_orig[valid_orig].min(), x_orig[valid_orig].max(), 300)
+    ax1.plot(eps_c, 10**(slope_orig * np.log10(eps_c) + intercept_orig),
+             '-', color='#d62728', linewidth=2,
+             label=f'Fit: $\\Delta f \\propto \\varepsilon^{{{slope_orig:.3f}}}$')
+    ax1.set_xlabel(r'$\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=14)
+    ax1.set_ylabel(r'$\Delta f$ (MHz)', fontsize=14)
+    ax1.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$', fontsize=13)
+    ax1.legend(fontsize=11)
+    ax1.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(OUTPUT_DIR / 'amp_circ_linear.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {OUTPUT_DIR / 'amp_circ_linear.png'}")
+
+    # --- response log-log plot ---
     fig, ax = plt.subplots(figsize=(9, 6))
 
     ax.plot(log_x, log_y, 'o', markersize=9, color='#1f77b4',
