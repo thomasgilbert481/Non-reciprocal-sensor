@@ -130,11 +130,16 @@ def main():
 
     df = pd.DataFrame(results)
 
-    # --- log-log fit (exclude ε=0) ---
-    x = df['epsilon'].values.astype(float)
-    y = df['delta_f_MHz'].values.astype(float)
+    # --- compute flipped response: ΔΔf = Δf[0] - Δf ---
+    df0 = df['delta_f_MHz'].iloc[0]   # Δf at ε=0 (Csensing=0)
+    df['response_MHz'] = df0 - df['delta_f_MHz']
+    print(f"\nΔf[0] = {df0:.2f} MHz  →  response = Δf[0] - Δf")
 
-    valid = (x > 0) & (y > 0)   # ε=0 (Csensing=0) excluded from log-log
+    # --- log-log fit on response (exclude ε=0 and response<=0) ---
+    x = df['epsilon'].values.astype(float)
+    y = df['response_MHz'].values.astype(float)
+
+    valid = (x > 0) & (y > 0)
     x_fit, y_fit = x[valid], y[valid]
 
     log_x = np.log10(x_fit)
@@ -142,35 +147,22 @@ def main():
     slope, intercept = np.polyfit(log_x, log_y, 1)
     fit_line = np.polyval([slope, intercept], log_x)
 
-    print(f"\nLog-log slope = {slope:.4f}")
+    print(f"Log-log slope = {slope:.4f}")
 
-    # --- plot ---
+    # --- log-log plot ---
     fig, ax = plt.subplots(figsize=(9, 6))
 
-    for _, row in df.iterrows():
-        if row['epsilon'] <= 0:
-            continue   # skip ε=0 on log-log
-        ax.plot(np.log10(row['epsilon']), np.log10(row['delta_f_MHz']),
-                'o', markersize=9, color='#1f77b4', zorder=5)
-
+    ax.plot(log_x, log_y, 'o', markersize=9, color='#1f77b4',
+            zorder=5, label='Manually verified data')
     ax.plot(log_x, fit_line, '-', color='#d62728', linewidth=2,
             label=f'Linear fit  (slope = {slope:.3f})')
 
-    from matplotlib.lines import Line2D
-    handles = [
-        Line2D([0],[0], marker='o', color='w', markerfacecolor='#1f77b4',
-               markersize=9, label='Manually verified data'),
-        Line2D([0],[0], color='#d62728', linewidth=2,
-               label=f'Linear fit  (slope = {slope:.3f})'),
-    ]
-    ax.legend(handles=handles, fontsize=11)
-
     ax.set_xlabel(r'$\log_{10}(\varepsilon)$  where  $\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=13)
-    ax.set_ylabel(r'$\log_{10}(\Delta f\ [\rm MHz])$', fontsize=14)
-    ax.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$ (Log-Log)',
+    ax.set_ylabel(r'$\log_{10}(\Delta f_0 - \Delta f\ [\rm MHz])$', fontsize=14)
+    ax.set_title(r'Amp Circuit: Sensor Response $(\Delta f_0 - \Delta f)$ vs $\varepsilon$ (Log-Log)',
                  fontsize=13)
+    ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3)
-
     ax.text(0.05, 0.95,
             f'Measured slope = {slope:.3f}\n(EP theory = 0.50)',
             transform=ax.transAxes, fontsize=12, verticalalignment='top',
@@ -182,26 +174,25 @@ def main():
     plt.close()
     print(f"Saved: {out_path}")
 
-    # --- linear plot: Δf vs ε ---
-    from matplotlib.lines import Line2D as _L2D
-
+    # --- linear plot: response vs ε ---
     fig2, ax2 = plt.subplots(figsize=(9, 6))
 
-    ax2.plot(df['epsilon'], df['delta_f_MHz'],
+    ax2.plot(df['epsilon'], df['response_MHz'],
              'o', markersize=9, color='#1f77b4', zorder=5,
              label='Manually verified data')
 
-    # Power-law fit curve in linear space (skip ε=0 for fit)
-    eps_range = np.linspace(x_fit.min(), x_fit.max(), 300)
-    df_fit_curve = 10**(slope * np.log10(eps_range) + intercept)
-    ax2.plot(eps_range, df_fit_curve, '-', color='#d62728', linewidth=2,
-             label=f'Fit: $\\Delta f \\propto \\varepsilon^{{{slope:.3f}}}$')
+    # Power-law fit curve in linear space
+    eps_range = np.linspace(0, x_fit.max(), 300)
+    # avoid log(0): start from small value for the curve
+    eps_curve = np.linspace(x_fit.min(), x_fit.max(), 300)
+    resp_fit_curve = 10**(slope * np.log10(eps_curve) + intercept)
+    ax2.plot(eps_curve, resp_fit_curve, '-', color='#d62728', linewidth=2,
+             label=f'Fit: $\\propto \\varepsilon^{{{slope:.3f}}}$')
 
     ax2.legend(fontsize=11)
-
     ax2.set_xlabel(r'$\varepsilon = C_{\rm sensing}/(2C_1)$', fontsize=14)
-    ax2.set_ylabel(r'$\Delta f$ (MHz)', fontsize=14)
-    ax2.set_title(r'Amp Circuit: $\Delta f$ vs Perturbation $\varepsilon$', fontsize=13)
+    ax2.set_ylabel(r'$\Delta f_0 - \Delta f$ (MHz)', fontsize=14)
+    ax2.set_title(r'Amp Circuit: Sensor Response $(\Delta f_0 - \Delta f)$ vs $\varepsilon$', fontsize=13)
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
