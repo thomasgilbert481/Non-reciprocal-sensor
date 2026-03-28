@@ -169,7 +169,7 @@ def main():
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.85))
 
     plt.tight_layout()
-    out_path = OUTPUT_DIR / 'amp_circ_loglog.png'
+    out_path = OUTPUT_DIR / 'amp_circ_loglog_response.png'
     plt.savefig(out_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved: {out_path}")
@@ -196,7 +196,7 @@ def main():
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    out_path2 = OUTPUT_DIR / 'amp_circ_linear.png'
+    out_path2 = OUTPUT_DIR / 'amp_circ_linear_response.png'
     plt.savefig(out_path2, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"Saved: {out_path2}")
